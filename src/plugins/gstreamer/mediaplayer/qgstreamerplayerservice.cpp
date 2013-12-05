@@ -54,6 +54,7 @@
 #endif
 #include <private/qgstreamervideowindow_p.h>
 #include <private/qgstreamervideorenderer_p.h>
+#include <private/qgstreamervideosinkcontrol_p.h>
 
 #include "qgstreamerstreamscontrol.h"
 #include <private/qgstreameraudioprobecontrol_p.h>
@@ -139,6 +140,8 @@ QMediaControl *QGstreamerPlayerService::requestControl(const char *name)
             m_videoOutput = m_videoRenderer;
         else if (qstrcmp(name, QVideoWindowControl_iid) == 0)
             m_videoOutput = m_videoWindow;
+        else if (qstrcmp(name, QGStreamerVideoSinkControl_iid) == 0)
+            m_videoOutput = new QGStreamerVideoSinkControl(this);
 #if defined(HAVE_WIDGETS)
         else if (qstrcmp(name, QVideoWidgetControl_iid) == 0)
             m_videoOutput = m_videoWidget;

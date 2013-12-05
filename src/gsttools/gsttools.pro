@@ -28,6 +28,8 @@ PRIVATE_HEADERS += \
     qgstcodecsinfo_p.h \
     qgstreamervideoprobecontrol_p.h \
     qgstreameraudioprobecontrol_p.h \
+    qgstreamervideosinkcontrol_p.h \
+    qgstreamerelementcontrol_p.h \
     qgstreamervideowindow_p.h \
     qgstreamervideooverlay_p.h \
     qgsttools_global_p.h \
@@ -47,6 +49,8 @@ SOURCES += \
     qgstcodecsinfo.cpp \
     qgstreamervideoprobecontrol.cpp \
     qgstreameraudioprobecontrol.cpp \
+    qgstreamervideosinkcontrol.cpp \
+    qgstreamerelementcontrol.cpp \
     qgstreamervideowindow.cpp \
     qgstreamervideooverlay.cpp \
     qgstreamerplayersession.cpp \
