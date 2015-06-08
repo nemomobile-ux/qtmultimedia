@@ -1239,6 +1239,8 @@ GstCaps *QGstUtils::capsForFormats(const QList<QVideoFrame::PixelFormat> &format
                     "video/x-raw",
                     "format"   , G_TYPE_STRING, gst_video_format_to_string(qt_videoFormatLookup[index].gstFormat),
                     nullptr));
+
+            gst_caps_set_features(caps, gst_caps_get_size(caps) - 1, gst_caps_features_new_any());
         }
     }
 #else
