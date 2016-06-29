@@ -152,6 +152,7 @@ public:
     QCamera::Status status() const;
     QCamera::State pendingState() const;
     bool isBusy() const;
+    bool isReadyForCapture() const;
 
     qint64 duration() const;
 
@@ -178,6 +179,7 @@ signals:
     void viewfinderChanged();
     void readyChanged(bool);
     void busyChanged(bool);
+    void handleReadyForCaptureChanged(bool);
 
 public slots:
     void setDevice(const QString &device);
@@ -204,6 +206,7 @@ private:
     void setAudioCaptureCaps();
     GstCaps *supportedCaps(QCamera::CaptureModes mode) const;
     static void updateBusyStatus(GObject *o, GParamSpec *p, gpointer d);
+    static void updateReadyForCapture(GObject *o, GParamSpec *p, gpointer d);
 
     QString currentContainerFormat() const;
 
@@ -219,6 +222,7 @@ private:
     QString m_inputDevice;
     bool m_muted;
     bool m_busy;
+    bool m_readyForCapture;
     QMediaStorageLocation m_mediaStorageLocation;
 
     QCamera::CaptureModes m_captureMode;
