@@ -52,7 +52,8 @@ CameraBinRecorder::CameraBinRecorder(CameraBinSession *session)
     :QMediaRecorderControl(session),
      m_session(session),
      m_state(QMediaRecorder::StoppedState),
-     m_status(QMediaRecorder::UnloadedStatus)
+     m_status(QMediaRecorder::UnloadedStatus),
+     m_busHelper(session->bus())
 {
     connect(m_session, SIGNAL(statusChanged(QCamera::Status)), SLOT(updateStatus()));
     connect(m_session, SIGNAL(pendingStateChanged(QCamera::State)), SLOT(updateStatus()));
@@ -62,10 +63,14 @@ CameraBinRecorder::CameraBinRecorder(CameraBinSession *session)
     connect(m_session, SIGNAL(mutedChanged(bool)), this, SIGNAL(mutedChanged(bool)));
     connect(m_session->cameraControl()->resourcePolicy(), SIGNAL(canCaptureChanged()),
             this, SLOT(updateStatus()));
+
+    m_busHelper->installMessageFilter(this);
 }
 
 CameraBinRecorder::~CameraBinRecorder()
 {
+    if (m_busHelper)
+        m_busHelper->removeMessageFilter(this);
 }
 
 QUrl CameraBinRecorder::outputLocation() const
@@ -292,6 +297,47 @@ void CameraBinRecorder::setVolume(qreal volume)
 {
     if (!qFuzzyCompare(volume, qreal(1.0)))
         qWarning() << "Media service doesn't support recorder audio gain.";
+}
+
+// This prefix is known, as camerabinsession doesn't set its own audio source,
+// the name of `autoaudiosrc` created by `camerabin` is fixed, and the way
+// `gstautodetect` creates this prefix is known.
+#define AUDIO_SRC_PREFIX "audiosrc-actual-src-"
+
+bool CameraBinRecorder::processBusMessage(const QGstreamerMessage &message)
+{
+    if (m_state == QMediaRecorder::StoppedState)
+        return false;
+
+    GstMessage* gm = message.rawMessage();
+
+    if (!gm)
+        return false;
+
+    if (GST_MESSAGE_TYPE(gm) == GST_MESSAGE_ERROR) {
+        GError *err;
+        gchar *debug;
+        gst_message_parse_error (gm, &err, &debug);
+
+        // Catch errors from the audio source element. Camera-related or
+        // camerabin's error will be caught in camerabinsession.cpp.
+        if (err && err->message && strncmp(GST_OBJECT_NAME(GST_MESSAGE_SRC(gm)),
+                AUDIO_SRC_PREFIX, sizeof(AUDIO_SRC_PREFIX) - 1) == 0) {
+            qWarning() << "Error in audio recording:" << err->message;
+            emit error(QMediaRecorder::ResourceError, tr("Error in audio recording."));
+            setState(QMediaRecorder::StoppedState);
+            // Reload the pipeline to make sure everything is working correctly.
+            m_session->cameraControl()->reloadLater();
+        }
+
+        if (err)
+            g_error_free (err);
+
+        if (debug)
+            g_free (debug);
+    }
+
+    return false;
 }
 
 QT_END_NAMESPACE

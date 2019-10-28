@@ -107,8 +107,8 @@ private Q_SLOTS:
 
 private:
     void resetFocusPoint();
-    void updateRegionOfInterest(const QRectF &rectangle);
-    void updateRegionOfInterest(const QVector<QRect> &rectangles);
+    void sendRegionOfInterestEvent(const QVector<QRect> &rectangles);
+    void updateRegionOfInterest();
 
 #if GST_CHECK_VERSION(1,0,0)
     bool probeBuffer(GstBuffer *buffer) override;
@@ -121,7 +121,7 @@ private:
     QCamera::LockStatus m_focusStatus;
     QCameraFocusZone::FocusZoneStatus m_focusZoneStatus;
     QPointF m_focusPoint;
-    QRectF m_focusRect;
+    QSizeF m_focusRectSize; // Changed by viewfinder aspect ratio
     QSize m_viewfinderResolution;
     QVector<QRect> m_faces;
     QVector<QRect> m_faceFocusRects;

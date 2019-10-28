@@ -41,6 +41,7 @@
 #ifndef CAMERABINRECORDERCONTROL_H
 #define CAMERABINRECORDERCONTROL_H
 
+#include <QtCore/QPointer>
 #include <QtMultimedia/private/qtmultimediaglobal_p.h>
 #include <qmediarecordercontrol.h>
 #include "camerabinsession.h"
@@ -51,9 +52,11 @@
 
 QT_BEGIN_NAMESPACE
 
-class CameraBinRecorder : public QMediaRecorderControl
+class CameraBinRecorder : public QMediaRecorderControl,
+                          public QGstreamerBusMessageFilter
 {
     Q_OBJECT
+    Q_INTERFACES(QGstreamerBusMessageFilter)
 
 public:
     CameraBinRecorder(CameraBinSession *session);
@@ -76,6 +79,8 @@ public:
     GstEncodingContainerProfile *videoProfile();
 #endif
 
+    bool processBusMessage(const QGstreamerMessage &message) override;
+
 public slots:
     void setState(QMediaRecorder::State state) override;
     void setMuted(bool) override;
@@ -87,6 +92,10 @@ private:
     CameraBinSession *m_session;
     QMediaRecorder::State m_state;
     QMediaRecorder::Status m_status;
+    /* It might be not safe to access m_session->bus() during destruction, so
+     * we keep a weak pointer reference ourself so that we don't depend on
+     * destruction order. */
+    QPointer<QGstreamerBusHelper> m_busHelper;
 };
 
 QT_END_NAMESPACE
