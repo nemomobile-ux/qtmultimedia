@@ -604,6 +604,13 @@ GstElement *CameraBinSession::buildCameraSource()
 
     if (m_cameraSrc != camSrc) {
         g_object_set(G_OBJECT(m_camerabin), CAMERA_SOURCE_PROPERTY, m_cameraSrc, NULL);
+
+        int ready_for_capture;
+        g_object_get(G_OBJECT(m_cameraSrc), "ready-for-capture", &ready_for_capture, NULL);
+        m_readyForCapture = ready_for_capture;
+        // For completeness. Although at this stage we won't be able to capture anyway.
+        QMetaObject::invokeMethod(this, "handleReadyForCaptureChanged",
+                                  Qt::QueuedConnection, Q_ARG(bool, m_readyForCapture));
         g_signal_connect(G_OBJECT(m_cameraSrc), "notify::ready-for-capture", G_CALLBACK(updateReadyForCapture), this);
 
         GstPad *vfsrc_pad = gst_element_get_static_pad(m_cameraSrc, "vfsrc");
