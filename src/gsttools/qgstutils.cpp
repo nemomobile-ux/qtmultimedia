@@ -557,6 +557,22 @@ typedef QHash<GstElementFactory *, QVector<QGstUtils::CameraInfo> > FactoryCamer
 
 Q_GLOBAL_STATIC(FactoryCameraInfoMap, qt_camera_device_info);
 
+int readAndValidateCamOrientationEnv() {
+    int orientation = qEnvironmentVariableIntValue("QT_GSTREAMER_CAM_ORIENTATION");
+    switch (orientation) {
+        case 0:
+        case 90:
+        case 180:
+        case 270:
+            return orientation;
+
+        default:
+            qWarning() << "Invalid camera orientation" << orientation
+                       << "specified in the environment variable.";
+            return 0;
+    }
+}
+
 }
 
 QVector<QGstUtils::CameraInfo> QGstUtils::enumerateCameras(GstElementFactory *factory)
@@ -668,11 +684,14 @@ QVector<QGstUtils::CameraInfo> QGstUtils::enumerateCameras(GstElementFactory *fa
             }
             //qDebug() << "found camera: " << name;
 
+            // Only lookup the env when at least 1 cam is found.
+            // Defaults to 0 so shouldn't cause problem when not set.
+            static int camOrientation = readAndValidateCamOrientationEnv();
 
             CameraInfo device = {
                 entryInfo.absoluteFilePath(),
                 name,
-                0,
+                camOrientation,
                 QCamera::UnspecifiedPosition,
                 driver
             };
