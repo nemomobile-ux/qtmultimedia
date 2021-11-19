@@ -86,11 +86,15 @@ private slots:
     void handleBusyChanged(bool);
     void handleCameraError(int error, const QString &errorString);
 
+    void handleApplicationStateChanged(Qt::ApplicationState state);
+
 private:
     void updateSupportedResolutions(const QString &device);
+    void doSetState(QCamera::State state);
 
     CameraBinSession *m_session;
     QCamera::State m_state;
+    int m_savedState;
     CamerabinResourcePolicy *m_resourcePolicy;
 
     bool m_reloadPending;

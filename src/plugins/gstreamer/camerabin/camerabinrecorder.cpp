@@ -44,6 +44,7 @@
 #include "camerabinvideoencoder.h"
 #include "camerabincontainer.h"
 #include <QtCore/QDebug>
+#include <QtGui/qguiapplication.h>
 
 
 QT_BEGIN_NAMESPACE
@@ -53,7 +54,9 @@ CameraBinRecorder::CameraBinRecorder(CameraBinSession *session)
      m_session(session),
      m_state(QMediaRecorder::StoppedState),
      m_status(QMediaRecorder::UnloadedStatus),
-     m_busHelper(session->bus())
+     m_busHelper(session->bus()),
+     m_awaitingAudioBuffer(false),
+     m_audioBufferProbe(this)
 {
     connect(m_session, SIGNAL(statusChanged(QCamera::Status)), SLOT(updateStatus()));
     connect(m_session, SIGNAL(pendingStateChanged(QCamera::State)), SLOT(updateStatus()));
@@ -65,6 +68,11 @@ CameraBinRecorder::CameraBinRecorder(CameraBinSession *session)
             this, SLOT(updateStatus()));
 
     m_busHelper->installMessageFilter(this);
+
+    if (qApp) {
+        connect(qApp, SIGNAL(applicationStateChanged(Qt::ApplicationState)),
+                this, SLOT(handleApplicationStateChanged()));
+    }
 }
 
 CameraBinRecorder::~CameraBinRecorder()
@@ -253,6 +261,7 @@ void CameraBinRecorder::setState(QMediaRecorder::State state)
         m_state = state;
         m_status = QMediaRecorder::FinalizingStatus;
         m_session->stopVideoRecording();
+        stopAwaitForAudioBuffer();
         break;
     case QMediaRecorder::PausedState:
         emit error(QMediaRecorder::ResourceError, tr("QMediaRecorder::pause() is not supported by camerabin2."));
@@ -268,6 +277,7 @@ void CameraBinRecorder::setState(QMediaRecorder::State state)
             m_state = state;
             m_status = QMediaRecorder::RecordingStatus;
             emit actualLocationChanged(m_session->outputLocation());
+            awaitForAudioBuffer();
         }
     }
 
@@ -338,6 +348,83 @@ bool CameraBinRecorder::processBusMessage(const QGstreamerMessage &message)
     }
 
     return false;
+}
+
+void CameraBinRecorder::handleApplicationStateChanged() {
+    // If we're recording, stop the recording if a) the application is not
+    // active (app state can jumps from Active to Suspended) and b) we've seen
+    // at least 1 audio buffer (i.e. we're not waiting for the trust prompt).
+
+    // Later, when the app become active again, don't restart the recording
+    // as it will confuse the user.
+
+    Qt::ApplicationState appState = qApp
+                                    ? qApp->applicationState()
+                                    : Qt::ApplicationActive;
+
+    if (appState != Qt::ApplicationActive
+            && m_state != QMediaRecorder::StoppedState
+            && !(m_awaitingAudioBuffer.load()))
+        setState(QMediaRecorder::StoppedState);
+}
+
+// In order to know that an audio buffer has arrived, we have to attach a pad
+// probe to the audio element's srcpad inside the CameraBin. Unfortunately,
+// there's no clean way to do this other than looking up the element inside the
+// CameraBin itself.
+
+// Caller owns the reference of the returned pad.
+GstPad * CameraBinRecorder::findAudioSrcPad() {
+    GstBin * camera_bin = GST_BIN(m_session->cameraBin());
+    if (!camera_bin)
+        return nullptr;
+
+    GstElement * audioSrc = gst_bin_get_by_name(camera_bin, "audiosrc");
+    if (!audioSrc)
+        return nullptr;
+
+    GstPad * audioSrcPad = gst_element_get_static_pad(audioSrc, "src");
+    gst_object_unref(audioSrc);
+    return audioSrcPad;
+}
+
+void CameraBinRecorder::awaitForAudioBuffer() {
+    GstPad * audioSrcPad = findAudioSrcPad();
+    if (!audioSrcPad)
+        // Probably because audio is not recorded.
+        return;
+
+    m_awaitingAudioBuffer.store(true);
+    m_audioBufferProbe.addProbeToPad(audioSrcPad);
+    gst_object_unref(audioSrcPad);
+}
+
+// This function can be called from both the probe and the setState() function.
+void CameraBinRecorder::stopAwaitForAudioBuffer() {
+    GstPad * audioSrcPad = findAudioSrcPad();
+    if (!audioSrcPad)
+        // Probably because audio is not recorded.
+        return;
+
+    m_audioBufferProbe.removeProbeFromPad(audioSrcPad);
+    m_awaitingAudioBuffer.store(false);
+    gst_object_unref(audioSrcPad);
+}
+
+bool CameraBinRecorder::AudioBufferProbe::probeBuffer(GstBuffer * buffer) {
+    Q_UNUSED(buffer);
+    recorder->stopAwaitForAudioBuffer();
+
+    // If we receive a buffer while the app is inactive, stop the recording.
+    // The permission is granted, but the user switched away before we knew it.
+    // handleApplicationStateChanged() will re-read the app state and act
+    // accordingly.
+    // TODO: this is kind of racy. We might receive a buffer before Unity8
+    // returns focus to the app.
+    QMetaObject::invokeMethod(recorder, "handleApplicationStateChanged",
+                                Qt::QueuedConnection);
+
+    return true;
 }
 
 QT_END_NAMESPACE

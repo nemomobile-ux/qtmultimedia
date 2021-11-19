@@ -88,6 +88,9 @@ public slots:
 
     void updateStatus();
 
+private slots:
+    void handleApplicationStateChanged();
+
 private:
     CameraBinSession *m_session;
     QMediaRecorder::State m_state;
@@ -96,6 +99,26 @@ private:
      * we keep a weak pointer reference ourself so that we don't depend on
      * destruction order. */
     QPointer<QGstreamerBusHelper> m_busHelper;
+
+    // Might be accessed from the main thread or the probe.
+    QAtomicInteger<bool> m_awaitingAudioBuffer;
+
+    class AudioBufferProbe : public QGstreamerBufferProbe {
+    public:
+        AudioBufferProbe(CameraBinRecorder * r)
+            : QGstreamerBufferProbe(ProbeBuffers)
+            , recorder(r)
+        {}
+
+        bool probeBuffer(GstBuffer *buffer) override;
+
+    private:
+        CameraBinRecorder * recorder;
+    } m_audioBufferProbe;
+
+    GstPad * findAudioSrcPad();
+    void awaitForAudioBuffer();
+    void stopAwaitForAudioBuffer();
 };
 
 QT_END_NAMESPACE

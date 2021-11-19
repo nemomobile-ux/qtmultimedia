@@ -48,6 +48,7 @@
 #include <QtCore/qdebug.h>
 #include <QtCore/qfile.h>
 #include <QtCore/qmetaobject.h>
+#include <QtGui/qguiapplication.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -58,6 +59,7 @@ CameraBinControl::CameraBinControl(CameraBinSession *session)
     :QCameraControl(session),
     m_session(session),
     m_state(QCamera::UnloadedState),
+    m_savedState(-1),
     m_reloadPending(false)
 {
     connect(m_session, SIGNAL(statusChanged(QCamera::Status)),
@@ -80,6 +82,11 @@ CameraBinControl::CameraBinControl(CameraBinSession *session)
 
     connect(m_session, SIGNAL(busyChanged(bool)),
             SLOT(handleBusyChanged(bool)));
+
+    if (qApp) {
+        connect(qApp, SIGNAL(applicationStateChanged(Qt::ApplicationState)),
+                this, SLOT(handleApplicationStateChanged(Qt::ApplicationState)));
+    }
 }
 
 CameraBinControl::~CameraBinControl()
@@ -113,9 +120,29 @@ bool CameraBinControl::isCaptureModeSupported(QCamera::CaptureModes mode) const
 
 void CameraBinControl::setState(QCamera::State state)
 {
+    // If the application is inactive, the camera shouldn't be started. Save the desired state
+    // instead and it will be set when the application becomes active.
+    if (qApp && qApp->applicationState() != Qt::ApplicationActive) {
+#ifdef CAMEABIN_DEBUG
+        qDebug() << Q_FUNC_INFO << "Application is not active, state change to"
+                 << ENUM_NAME(QCamera, "State", state) << "is delayed."
+#endif
+        m_savedState = state;
+        return;
+    }
+
+    doSetState(state);
+}
+
+// doSetState is required to allow handleApplicationStateChanged() to circumvent
+// application state check.
+
+void CameraBinControl::doSetState(QCamera::State state)
+{
 #ifdef CAMEABIN_DEBUG
     qDebug() << Q_FUNC_INFO << ENUM_NAME(QCamera, "State", state);
 #endif
+
     if (m_state != state) {
         m_state = state;
 
@@ -231,6 +258,8 @@ void CameraBinControl::handleBusyChanged(bool busy)
             case QCamera::LoadedState:
                 resourceSet = CamerabinResourcePolicy::LoadedResources;
                 break;
+            case QCamera::ActiveState:
+                resourceSet = CamerabinResourcePolicy::VideoCaptureResources;
             }
 
             m_resourcePolicy->setResourceSet(resourceSet);
@@ -301,6 +330,21 @@ void CameraBinControl::setViewfinderColorSpaceConversion(bool enabled)
         flags &= ~VIEWFINDER_COLORSPACE_CONVERSION;
 
     g_object_set(G_OBJECT(m_session->cameraBin()), "flags", flags, NULL);
+}
+
+void CameraBinControl::handleApplicationStateChanged(Qt::ApplicationState appState) {
+    // App state can jumps from Active to Suspended. Thus we check for "not active".
+    if (appState != Qt::ApplicationActive) {
+        if (m_state != QCamera::UnloadedState) {
+            m_savedState = m_state;
+            doSetState(QCamera::UnloadedState);
+        }
+    } else {
+        if (m_savedState != -1) {
+            doSetState(QCamera::State(m_savedState));
+            m_savedState = -1;
+        }
+    }
 }
 
 QT_END_NAMESPACE
