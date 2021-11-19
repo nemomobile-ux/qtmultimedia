@@ -100,7 +100,9 @@ void CameraBinFlash::setFlashMode(QCameraExposure::FlashModes mode)
     gboolean torchEnabled = false;
     g_object_get(G_OBJECT(m_session->cameraSource()), "video-torch", &torchEnabled, NULL);
 
-    gboolean enableTorch = mode.testFlag(QCameraExposure::FlashTorch);
+    gboolean enableTorch = mode.testFlag(QCameraExposure::FlashTorch) ||
+                           // For compatibility with majority of UT apps.
+                           mode.testFlag(QCameraExposure::FlashVideoLight);
 
     if (bool(enableTorch) != bool(torchEnabled)) {
         g_object_set(G_OBJECT(m_session->cameraSource()), "video-torch", enableTorch, NULL);

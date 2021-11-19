@@ -602,16 +602,13 @@ QVector<QGstUtils::CameraInfo> QGstUtils::enumerateCameras(GstElementFactory *fa
                         ? gst_element_factory_create(factory, 0)
                         : 0;
                 if (camera) {
-                    if (gst_element_set_state(camera, GST_STATE_READY) != GST_STATE_CHANGE_SUCCESS) {
-                        // no-op
-                    } else for (int i = 0; i < 2; ++i) {
+                    for (int i = 0; i < 2; ++i) {
                         gint orientation = 0;
                         g_object_set(G_OBJECT(camera), "camera-device", i, nullptr);
                         g_object_get(G_OBJECT(camera), "sensor-mount-angle", &orientation, nullptr);
 
                         devices[i].orientation = (720 - orientation) % 360;
                     }
-                    gst_element_set_state(camera, GST_STATE_NULL);
                     gst_object_unref(GST_OBJECT(camera));
 
                 }
