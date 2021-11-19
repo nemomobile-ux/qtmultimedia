@@ -1310,6 +1310,12 @@ void CameraBinSession::recordVideo()
     g_object_set(G_OBJECT(m_camerabin), FILENAME_PROPERTY, QFile::encodeName(actualFileName).constData(), NULL);
 
     g_signal_emit_by_name(G_OBJECT(m_camerabin), CAPTURE_START, NULL);
+
+    // FIXME: emit durationChanged event to tell the application that the duration
+    // has been reset.
+    // The correct implementation must retain the duration across records and reset
+    // it when the new record starts.
+    emit durationChanged(duration());
 }
 
 void CameraBinSession::stopVideoRecording()
