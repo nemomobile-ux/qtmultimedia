@@ -213,6 +213,12 @@ private:
     static void elementAdded(GstBin *bin, GstElement *element, CameraBinSession *session);
     static void elementRemoved(GstBin *bin, GstElement *element, CameraBinSession *session);
 
+#if GST_CHECK_VERSION(1,0,0)
+    static GstPadProbeReturn vfsrcEventProbe(GstPad *, GstPadProbeInfo *info, gpointer user_data);
+#else
+    static gboolean vfsrcEventProbe(GstElement *, GstEvent *event, gpointer user_data);
+#endif
+
     QUrl m_sink;
     QUrl m_actualSink;
     bool m_recordingActive;

@@ -577,6 +577,18 @@ GstElement *CameraBinSession::buildCameraSource()
         g_object_set(G_OBJECT(m_camerabin), CAMERA_SOURCE_PROPERTY, m_cameraSrc, NULL);
         g_signal_connect(G_OBJECT(m_cameraSrc), "notify::ready-for-capture", G_CALLBACK(updateReadyForCapture), this);
 
+        GstPad *vfsrc_pad = gst_element_get_static_pad(m_cameraSrc, "vfsrc");
+
+        if (vfsrc_pad) {
+#if GST_CHECK_VERSION(1,0,0)
+            gst_pad_add_probe(vfsrc_pad, GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM,
+                    vfsrcEventProbe, NULL, NULL);
+#else
+            gst_pad_add_event_probe(vfsrc_pad, G_CALLBACK(vfsrcEventProbe), NULL);
+#endif
+            gst_object_unref(GST_OBJECT(vfsrc_pad));
+        }
+
         // Unref only if camSrc is not m_cameraSrc to prevent double unrefing.
         if (camSrc)
             gst_object_unref(GST_OBJECT(camSrc));
@@ -762,6 +774,71 @@ void CameraBinSession::ViewfinderProbe::probeCaps(GstCaps *caps)
     session->m_actualViewfinderSettings.setMaximumFrameRate(frameRate.second);
     session->m_actualViewfinderSettings.setPixelFormat(QGstUtils::structurePixelFormat(s));
     session->m_actualViewfinderSettings.setPixelAspectRatio(QGstUtils::structurePixelAspectRatio(s));
+}
+
+/*
+ * Filter "image-orientation" tag at viewfinder source pad. Applications are
+ * expected to handle orientation within it. Providing this to our viewfinder
+ * sink/backend can make it *also* handle it for the app, causing confusion.
+ */
+
+#if GST_CHECK_VERSION(1,0,0)
+GstPadProbeReturn CameraBinSession::vfsrcEventProbe(
+        GstPad *, GstPadProbeInfo *info, gpointer user_data)
+{
+    Q_UNUSED(user_data);
+    GstEvent *event = GST_PAD_PROBE_INFO_EVENT(info);
+#else
+gboolean CameraBinSession::vfsrcEventProbe(
+        GstElement *, GstEvent *event, gpointer user_data)
+{
+    Q_UNUSED(user_data);
+#endif
+    if (!event || GST_EVENT_TYPE(event) != GST_EVENT_TAG)
+#if GST_CHECK_VERSION(1,0,0)
+        return GST_PAD_PROBE_OK;
+#else
+        return TRUE;
+#endif
+
+    GstTagList *gstTags;
+    gst_event_parse_tag(event, &gstTags);
+
+    // We don't interest in tag value, only if the tag exists
+    const gchar * tagValue;
+    if (!gst_tag_list_peek_string_index(gstTags, "image-orientation",
+            /* index */ 0, &tagValue))
+#if GST_CHECK_VERSION(1,0,0)
+        return GST_PAD_PROBE_OK;
+#else
+        return TRUE;
+#endif
+
+    if (gst_tag_list_n_tags(gstTags) == 1) {
+        // We can simply drop this event
+#if GST_CHECK_VERSION(1,0,0)
+        return GST_PAD_PROBE_DROP;
+#else
+        return FALSE;
+#endif
+    }
+
+#if GST_CHECK_VERSION(1,0,0)
+    // Create a new event to remove such tag
+
+    GstTagList *gstTagsCopy = gst_tag_list_copy(gstTags);
+    gst_tag_list_remove_tag(gstTagsCopy, "image-orientation");
+
+    gst_event_unref(event);
+    event = gst_event_new_tag(gstTagsCopy);
+
+    GST_PAD_PROBE_INFO_DATA(info) = event;
+
+    return GST_PAD_PROBE_OK;
+#else
+    // I cannot find a way to modify the event in Gstreamer 0.10.
+    return TRUE;
+#endif
 }
 
 void CameraBinSession::handleViewfinderChange()
